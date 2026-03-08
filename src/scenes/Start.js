@@ -1,8 +1,31 @@
 export class Start extends Phaser.Scene {
+    // =========================================================================
+    // START SCENE
+    // =========================================================================
+    // This version keeps the game readable early, then ramps pressure by score.
+    //
+    // Core pacing goals applied:
+    // - 2-item waves stay as the base wave size.
+    // - 0–4 hearts: very light learning phase, no flooding.
+    // - 5–19 hearts: tomatoes begin, still not screen-filling.
+    // - 20–59 hearts: denser gameplay, but still readable.
+    // - 60+ hearts (ICON): tomatoes are about 3% more common than hearts.
+    // - 300 hearts: Chaos Mode triggers, blinking message, tomato flood, end run.
+    //
+    // Fairness goals:
+    // - One safe lane instead of two.
+    // - Early waves allow only 1 tomato max.
+    // - Later waves can allow 2 tomatoes in a 2-item wave when appropriate.
+    // - Screen target fills scale by score instead of immediately flooding.
+    // =========================================================================
+
     constructor() {
         super('Start');
     }
 
+    // =========================================================================
+    // PRELOAD
+    // =========================================================================
     preload() {
         this.load.image('backgroundgames1', 'assets/BG1.png');
         this.load.image('backgroundgames2', 'assets/BG2.png');
@@ -34,12 +57,24 @@ export class Start extends Phaser.Scene {
         this.load.audio('arcadeMusic', 'assets/Arcade.mp3');
     }
 
+    // =========================================================================
+    // CREATE
+    // =========================================================================
     create() {
+        // ---------------------------------------------------------------------
+        // Base game size
+        // ---------------------------------------------------------------------
         this.gameWidth = 360;
         this.gameHeight = 640;
 
+        // ---------------------------------------------------------------------
+        // Background
+        // ---------------------------------------------------------------------
         this.background = this.add.tileSprite(180, 320, 360, 640, 'backgroundgames1');
 
+        // ---------------------------------------------------------------------
+        // Core state
+        // ---------------------------------------------------------------------
         this.gameStarted = false;
         this.gameCountdownActive = false;
         this.isGameOver = false;
@@ -48,59 +83,137 @@ export class Start extends Phaser.Scene {
         this.homeScreenActive = false;
         this.isUnlockingIntroGate = false;
 
+        // ---------------------------------------------------------------------
+        // Player
+        // ---------------------------------------------------------------------
         this.ship = this.add.image(180, 550, 'LuvaGirl').setScale(0.22);
         this.shipBaseY = 550;
         this.ship.setAlpha(0);
 
+        // ---------------------------------------------------------------------
+        // Input
+        // ---------------------------------------------------------------------
         this.cursors = this.input.keyboard.createCursorKeys();
 
+        // ---------------------------------------------------------------------
+        // Home movement visual state
+        // ---------------------------------------------------------------------
         this.homePointerMoving = false;
         this.homeMoveVisualTimer = null;
         this.homeMoveVisualDelay = 120;
 
+        // ---------------------------------------------------------------------
+        // Items group
+        // ---------------------------------------------------------------------
         this.items = this.add.group();
 
+        // ---------------------------------------------------------------------
+        // Score / lives / speed
+        // ---------------------------------------------------------------------
         this.heartsCaught = 0;
         this.lives = 3;
-        this.currentFallSpeed = 3;
+        this.currentFallSpeed = 2;
 
+        // ---------------------------------------------------------------------
+        // Level flags
+        // ---------------------------------------------------------------------
         this.starLevelShown = false;
         this.superStarShown = false;
         this.iconLevelShown = false;
         this.legendaryShown = false;
+        this.chaosLevelShown = false;
 
+        // ---------------------------------------------------------------------
+        // Final level text
+        // ---------------------------------------------------------------------
         this.currentLevelName = 'Luva Girl';
 
+        // ---------------------------------------------------------------------
+        // Grammy state
+        // ---------------------------------------------------------------------
         this.grammyUnlocked = false;
         this.grammySpawned = false;
         this.grammyCaught = false;
         this.grammyForcedSpawnPending = false;
 
+        // ---------------------------------------------------------------------
+        // Special spawn limits
+        // ---------------------------------------------------------------------
         this.musicSpawnCount = 0;
         this.ramenSpawnCount = 0;
         this.maxMusicSpawns = 3;
         this.maxRamenSpawns = 3;
 
+        // ---------------------------------------------------------------------
+        // Heart texture pool
+        // ---------------------------------------------------------------------
         this.heartKeys = ['heartBlue', 'heartGreen', 'heartPink', 'heartYellow'];
 
+        // ---------------------------------------------------------------------
+        // Audio refs
+        // ---------------------------------------------------------------------
         this.bgMusic = null;
         this.arcadeMusic = null;
-        this.lifeIcons = [];
 
+        // ---------------------------------------------------------------------
+        // HUD refs
+        // ---------------------------------------------------------------------
+        this.lifeIcons = [];
+        this.heartsLabelText = null;
+        this.heartsNumberText = null;
+        this.endGameButton = null;
+
+        // ---------------------------------------------------------------------
+        // Catch zone
+        // ---------------------------------------------------------------------
         this.catchZoneY = this.ship.y + 28;
         this.catchZoneBottom = this.ship.y + 48;
 
+        // ---------------------------------------------------------------------
+        // Spawn timers
+        // ---------------------------------------------------------------------
         this.spawnTimer = null;
         this.extraSpawnTimer = null;
 
+        // ---------------------------------------------------------------------
+        // Wave spawn memory
+        // ---------------------------------------------------------------------
         this.spawnLanes = [52, 92, 132, 180, 228, 268, 308];
         this.lastSpawnLane = null;
         this.lastTomatoLane = null;
         this.lastSpawnType = null;
 
+        // ---------------------------------------------------------------------
+        // First tomato trigger flag
+        // ---------------------------------------------------------------------
         this.firstTomatoTriggered = false;
+
+        // ---------------------------------------------------------------------
+        // Music mode
+        // ---------------------------------------------------------------------
         this.activeMusicMode = 'home';
 
+        // ---------------------------------------------------------------------
+        // Dynamic pacing state
+        // ---------------------------------------------------------------------
+        this.baseWaveSize = 2;
+        this.lastWaveSpawnAt = 0;
+        this.lastRefillSpawnAt = 0;
+
+        // ---------------------------------------------------------------------
+        // Chaos mode state
+        // ---------------------------------------------------------------------
+        this.chaosThreshold = 300;
+        this.chaosModeTriggered = false;
+        this.chaosModeActive = false;
+        this.chaosText = null;
+        this.chaosBlinkTween = null;
+        this.chaosFloodTimer = null;
+        this.chaosEndTimer = null;
+
+        // ---------------------------------------------------------------------
+        // Pointer input
+        // ---------------------------------------------------------------------
         this.input.on('pointerdown', (pointer) => {
             this.retryActiveMusic();
 
@@ -143,6 +256,9 @@ export class Start extends Phaser.Scene {
             }
         });
 
+        // ---------------------------------------------------------------------
+        // Audio fallback + intro
+        // ---------------------------------------------------------------------
         this.installBrowserAudioFallbacks();
         this.tryStartHomeMusic();
         this.createStartScreen();
@@ -150,10 +266,19 @@ export class Start extends Phaser.Scene {
         this.showIntroGate();
     }
 
+    // =========================================================================
+    // BASE SHIP TEXTURE
+    // =========================================================================
     getBaseShipTexture() {
-        return this.legendaryShown ? 'LuvaGirlstar' : 'LuvaGirl';
+        if (this.legendaryShown) {
+            return 'LuvaGirlstar';
+        }
+        return 'LuvaGirl';
     }
 
+    // =========================================================================
+    // INTRO GATE
+    // =========================================================================
     createIntroGate() {
         this.introGateElements = [];
 
@@ -312,7 +437,9 @@ export class Start extends Phaser.Scene {
         if (!this.introGateElements) return;
 
         this.introGateElements.forEach((el) => {
-            if (el && el.active) el.destroy();
+            if (el && el.active) {
+                el.destroy();
+            }
         });
 
         this.introGateElements = [];
@@ -325,6 +452,9 @@ export class Start extends Phaser.Scene {
         this.isUnlockingIntroGate = false;
     }
 
+    // =========================================================================
+    // HOME SCREEN
+    // =========================================================================
     enterHomeScreen() {
         this.homeScreenActive = true;
         this.playHomeScreenIntro();
@@ -457,7 +587,9 @@ export class Start extends Phaser.Scene {
             this.startButton
         );
 
-        this.startScreenElements.forEach((el) => el.setAlpha(0));
+        this.startScreenElements.forEach((el) => {
+            el.setAlpha(0);
+        });
 
         this.tweens.add({
             targets: this.presaveArrow,
@@ -540,6 +672,9 @@ export class Start extends Phaser.Scene {
         });
     }
 
+    // =========================================================================
+    // AUDIO FALLBACKS
+    // =========================================================================
     installBrowserAudioFallbacks() {
         const retry = () => {
             this.retryActiveMusic();
@@ -578,6 +713,9 @@ export class Start extends Phaser.Scene {
         }
     }
 
+    // =========================================================================
+    // HOME IDLE / DRAG VISUALS
+    // =========================================================================
     setHomeMoveVisualActive() {
         if (this.gameStarted || this.isGameOver || this.gameCountdownActive || this.introGateActive) return;
         if (this.reactionTimer) return;
@@ -632,6 +770,9 @@ export class Start extends Phaser.Scene {
         }
     }
 
+    // =========================================================================
+    // MUSIC
+    // =========================================================================
     tryStartHomeMusic() {
         if (this.isGameOver || this.gameStarted || this.gameCountdownActive) return;
         if (!this.sound || !this.cache.audio.exists('arcadeMusic')) return;
@@ -692,6 +833,9 @@ export class Start extends Phaser.Scene {
         }
     }
 
+    // =========================================================================
+    // GAME START FLOW
+    // =========================================================================
     startGame() {
         if (this.gameStarted || this.gameCountdownActive || this.isGameOver || this.introGateActive) return;
 
@@ -807,6 +951,9 @@ export class Start extends Phaser.Scene {
         showNext();
     }
 
+    // =========================================================================
+    // GAMEPLAY BOOT
+    // =========================================================================
     beginGameplay() {
         this.gameCountdownActive = false;
         this.gameStarted = true;
@@ -814,111 +961,239 @@ export class Start extends Phaser.Scene {
         this.setupHUD();
         this.tryStartGameplayMusic();
 
-        this.spawnWave(2);
+        // Initial wave is intentionally small.
+        this.spawnWave(this.baseWaveSize);
 
+        // Fast polling timer, but actual spawn allowed depends on score pacing.
         this.spawnTimer = this.time.addEvent({
-            delay: 450,
+            delay: 180,
             callback: () => {
-                this.spawnWave(2);
+                this.maybeRunMainWave();
             },
             callbackScope: this,
             loop: true
         });
 
+        // Refill timer is score-aware and much lighter before 20 hearts.
         this.extraSpawnTimer = this.time.addEvent({
-            delay: 720,
+            delay: 220,
             callback: () => {
-                if (this.isGameOver || !this.gameStarted) return;
-
-                let activeFalling = 0;
-
-                this.items.children.iterate((item) => {
-                    if (!item || !item.active) return;
-                    if (item.y < this.catchZoneY - 40) {
-                        activeFalling += 2;
-                    }
-                });
-
-                if (activeFalling < 2) {
-                    this.spawnWave(3 - activeFalling);
-                }
+                this.maybeRunRefillWave();
             },
             callbackScope: this,
             loop: true
         });
     }
-triggerGrammyEvent() {
 
-    if (this.isGameOver || this.grammySpawned || this.grammyCaught) return;
+    maybeRunMainWave() {
+        if (this.isGameOver || !this.gameStarted || this.chaosModeActive) return;
 
-    if (this.spawnTimer) this.spawnTimer.paused = true;
-    if (this.extraSpawnTimer) this.extraSpawnTimer.paused = true;
+        const now = this.time.now;
+        const neededDelay = this.getWaveDelayByHearts();
 
-    const dim = this.add.rectangle(180, 320, 360, 640, 0x000000, 0.35);
-
-    this.items.children.iterate((item) => {
-        if (!item) return;
-        if (item.y < 200) {
-            if (item.glowSprite) item.glowSprite.destroy();
-            item.destroy();
+        if (now - this.lastWaveSpawnAt < neededDelay) {
+            return;
         }
-    });
 
-    const grammy = this.add.image(180, -60, 'grammy').setScale(0.32);
-
-    grammy.itemKind = 'bonus';
-    grammy.itemValue = 10;
-    grammy.itemType = 'grammy';
-    grammy.speed = this.currentFallSpeed * 0.55;
-    grammy.catchWidth = 42;
-    grammy.catchHeight = 42;
-    grammy.angleSpeed = 0.25;
-    grammy.baseScale = 0.32;
-    grammy.pulseSpeed = 0.2;
-    grammy.pulseAmount = 0.03;
-    grammy.pulseTime = 0;
-    grammy.safePassed = false;
-
-    this.grammySpawned = true;
-
-    if (grammy.preFX) {
-        grammy.preFX.addGlow(0xffe066, 12, 0, false, 0.15, 16);
+        this.lastWaveSpawnAt = now;
+        this.spawnWave(this.baseWaveSize);
     }
 
-    this.items.add(grammy);
+    maybeRunRefillWave() {
+        if (this.isGameOver || !this.gameStarted || this.chaosModeActive) return;
 
-    for (let i = 0; i < 10; i++) {
-        const sparkle = this.add.text(
-            180 + Phaser.Math.Between(-40, 40),
-            Phaser.Math.Between(40, 120),
-            '✨',
-            { fontSize: '18px' }
-        ).setOrigin(0.5);
+        const targetActive = this.getTargetActiveItemsByHearts();
+        const currentActive = this.countActiveFallingItems();
 
-        this.tweens.add({
-            targets: sparkle,
-            y: sparkle.y + Phaser.Math.Between(80, 140),
-            x: sparkle.x + Phaser.Math.Between(-30, 30),
-            alpha: 0,
-            duration: 900,
-            onComplete: () => sparkle.destroy()
+        if (currentActive >= targetActive) {
+            return;
+        }
+
+        const now = this.time.now;
+        const refillDelay = this.getRefillDelayByHearts();
+
+        if (now - this.lastRefillSpawnAt < refillDelay) {
+            return;
+        }
+
+        this.lastRefillSpawnAt = now;
+
+        const deficit = targetActive - currentActive;
+        const refillCount = Phaser.Math.Clamp(deficit, 1, this.baseWaveSize);
+
+        this.spawnWave(refillCount);
+    }
+
+    countActiveFallingItems() {
+        let total = 0;
+
+        this.items.children.iterate((item) => {
+            if (!item || !item.active) return;
+            if (item.y < this.catchZoneY - 40) {
+                total += 1;
+            }
+        });
+
+        return total;
+    }
+
+    getWaveDelayByHearts() {
+        // 0–4: very slow learning phase
+        if (this.heartsCaught < 5) {
+            return 1150;
+        }
+
+        // 5–19: still light
+        if (this.heartsCaught < 20) {
+            return 900;
+        }
+
+        // 20–59: fuller, but controlled
+        if (this.heartsCaught < 60) {
+            return 700;
+        }
+
+        // 60–99: ICON and readable pressure
+        if (this.heartsCaught < 100) {
+            return 620;
+        }
+
+        // 100–199: harder
+        if (this.heartsCaught < 200) {
+            return 560;
+        }
+
+        // 200–299: high pressure, still not nonsense
+        return 520;
+    }
+
+    getRefillDelayByHearts() {
+        if (this.heartsCaught < 5) {
+            return 1400;
+        }
+
+        if (this.heartsCaught < 20) {
+            return 1100;
+        }
+
+        if (this.heartsCaught < 60) {
+            return 850;
+        }
+
+        if (this.heartsCaught < 100) {
+            return 700;
+        }
+
+        if (this.heartsCaught < 200) {
+            return 620;
+        }
+
+        return 580;
+    }
+
+    getTargetActiveItemsByHearts() {
+        // Deliberately light early.
+        if (this.heartsCaught < 5) {
+            return 1;
+        }
+
+        if (this.heartsCaught < 20) {
+            return 2;
+        }
+
+        if (this.heartsCaught < 60) {
+            return 3;
+        }
+
+        if (this.heartsCaught < 100) {
+            return 4;
+        }
+
+        if (this.heartsCaught < 200) {
+            return 4;
+        }
+
+        return 5;
+    }
+
+    // =========================================================================
+    // GRAMMY EVENT
+    // =========================================================================
+    triggerGrammyEvent() {
+        if (this.isGameOver || this.grammySpawned || this.grammyCaught || this.chaosModeActive) return;
+
+        if (this.spawnTimer) this.spawnTimer.paused = true;
+        if (this.extraSpawnTimer) this.extraSpawnTimer.paused = true;
+
+        const dim = this.add.rectangle(180, 320, 360, 640, 0x000000, 0.35);
+
+        this.items.children.iterate((item) => {
+            if (!item) return;
+            if (item.y < 200) {
+                if (item.glowSprite && item.glowSprite.active) {
+                    item.glowSprite.destroy();
+                }
+                item.destroy();
+            }
+        });
+
+        const grammy = this.add.image(180, -60, 'grammy').setScale(0.32);
+
+        grammy.itemKind = 'bonus';
+        grammy.itemValue = 10;
+        grammy.itemType = 'grammy';
+        grammy.speed = Math.max(2, this.currentFallSpeed * 0.55);
+        grammy.catchWidth = 42;
+        grammy.catchHeight = 42;
+        grammy.angleSpeed = 0.25;
+        grammy.baseScale = 0.32;
+        grammy.pulseSpeed = 0.2;
+        grammy.pulseAmount = 0.03;
+        grammy.pulseTime = 0;
+        grammy.safePassed = false;
+
+        this.grammySpawned = true;
+
+        if (grammy.preFX) {
+            grammy.preFX.addGlow(0xffe066, 12, 0, false, 0.15, 16);
+        }
+
+        this.items.add(grammy);
+
+        for (let i = 0; i < 10; i++) {
+            const sparkle = this.add.text(
+                180 + Phaser.Math.Between(-40, 40),
+                Phaser.Math.Between(40, 120),
+                '✨',
+                { fontSize: '18px' }
+            ).setOrigin(0.5);
+
+            this.tweens.add({
+                targets: sparkle,
+                y: sparkle.y + Phaser.Math.Between(80, 140),
+                x: sparkle.x + Phaser.Math.Between(-30, 30),
+                alpha: 0,
+                duration: 900,
+                onComplete: () => sparkle.destroy()
+            });
+        }
+
+        this.time.delayedCall(1800, () => {
+            this.tweens.add({
+                targets: dim,
+                alpha: 0,
+                duration: 300,
+                onComplete: () => dim.destroy()
+            });
+
+            if (this.spawnTimer) this.spawnTimer.paused = false;
+            if (this.extraSpawnTimer) this.extraSpawnTimer.paused = false;
         });
     }
 
-    this.time.delayedCall(1800, () => {
-
-        this.tweens.add({
-            targets: dim,
-            alpha: 0,
-            duration: 300,
-            onComplete: () => dim.destroy()
-        });
-
-        if (this.spawnTimer) this.spawnTimer.paused = false;
-        if (this.extraSpawnTimer) this.extraSpawnTimer.paused = false;
-
-    });
-}
+    // =========================================================================
+    // HUD
+    // =========================================================================
     setupHUD() {
         this.add.text(10, 8, 'Coco Jones', { fontSize: '12px', color: '#ffffff' });
         this.add.text(10, 22, 'Luva Girl', { fontSize: '12px', color: '#ffffff' });
@@ -988,6 +1263,9 @@ triggerGrammyEvent() {
         }
     }
 
+    // =========================================================================
+    // UPDATE LOOP
+    // =========================================================================
     update() {
         if (this.isGameOver) return;
 
@@ -1073,12 +1351,19 @@ triggerGrammyEvent() {
         this.checkLevelProgress();
     }
 
+    // =========================================================================
+    // SAFE LANES
+    // =========================================================================
     getSafeLaneIndexes() {
+        // One protected lane only.
         const laneCount = this.spawnLanes.length;
-        const center = Phaser.Math.Between(1, laneCount - 2);
-        return [center - 1, center];
+        const safeLane = Phaser.Math.Between(0, laneCount - 1);
+        return [safeLane];
     }
 
+    // =========================================================================
+    // SPAWN LANE PICKING
+    // =========================================================================
     getSpawnX(type, usedLaneIndexes = [], blockedLaneIndexes = []) {
         let availableLaneIndexes = this.spawnLanes
             .map((_, index) => index)
@@ -1133,13 +1418,37 @@ triggerGrammyEvent() {
         return { x, laneIndex };
     }
 
+    // =========================================================================
+    // WAVE TOMATO LIMITS
+    // =========================================================================
+    getMaxTomatoesPerWave() {
+        // Keep early game readable.
+        if (this.heartsCaught < 20) {
+            return 1;
+        }
+
+        // Mid game still moderate.
+        if (this.heartsCaught < 60) {
+            return 1;
+        }
+
+        // ICON+ can allow 2 tomatoes in a 2-item wave.
+        return 2;
+    }
+
+    // =========================================================================
+    // WAVE SPAWNING
+    // =========================================================================
     spawnWave(count = 2) {
         if (this.isGameOver || !this.gameStarted) return;
+        if (this.chaosModeActive) return;
 
         const usedLaneIndexes = [];
         const safeLaneIndexes = this.getSafeLaneIndexes();
         const spawnCount = Math.max(1, count);
-        let tomatoSpawnedThisWave = false;
+
+        const maxTomatoesThisWave = this.getMaxTomatoesPerWave();
+        let tomatoCountThisWave = 0;
 
         if (this.grammyForcedSpawnPending && this.grammyUnlocked && !this.grammySpawned && !this.grammyCaught) {
             const forcedGrammy = this.spawnSpecificItem('grammy', usedLaneIndexes, safeLaneIndexes);
@@ -1152,14 +1461,15 @@ triggerGrammyEvent() {
         for (let i = usedLaneIndexes.length; i < spawnCount; i++) {
             let type = this.chooseItemType();
 
-            if (type === 'tomato' && tomatoSpawnedThisWave) {
+            if (type === 'tomato' && tomatoCountThisWave >= maxTomatoesThisWave) {
+                // Convert extra tomato rolls to hearts after the limit.
                 type = 'heart';
             }
 
             const created = this.spawnSpecificItem(type, usedLaneIndexes, safeLaneIndexes);
 
             if (created && type === 'tomato') {
-                tomatoSpawnedThisWave = true;
+                tomatoCountThisWave += 1;
             }
 
             if (created && typeof created.laneIndex === 'number') {
@@ -1168,6 +1478,9 @@ triggerGrammyEvent() {
         }
     }
 
+    // =========================================================================
+    // GLOW EFFECTS
+    // =========================================================================
     addPurpleGlow(item) {
         if (!item) return;
 
@@ -1190,6 +1503,9 @@ triggerGrammyEvent() {
         item.glowSprite = glow;
     }
 
+    // =========================================================================
+    // ITEM CREATION
+    // =========================================================================
     spawnSpecificItem(type, usedLaneIndexes = [], safeLaneIndexes = []) {
         if (this.isGameOver) return null;
 
@@ -1201,7 +1517,7 @@ triggerGrammyEvent() {
         const spawnData = this.getSpawnX(type, usedLaneIndexes, blockedLaneIndexes);
         const x = spawnData.x;
 
-        let item;
+        let item = null;
 
         if (type === 'heart') {
             const randomHeart = Phaser.Utils.Array.GetRandom(this.heartKeys);
@@ -1290,48 +1606,169 @@ triggerGrammyEvent() {
         };
     }
 
-    chooseItemType() {
-        if (this.grammyUnlocked && !this.grammySpawned && !this.grammyCaught) {
-            const grammyRoll = Phaser.Math.Between(1, 100);
-            if (grammyRoll <= 12) {
-                return 'grammy';
-            }
-        }
-
+    // =========================================================================
+    // SCORE / LEVEL SPAWN RATIOS
+    // =========================================================================
+    getSpawnWeights() {
+        // ---------------------------------------------------------------------
+        // 0–4 hearts
+        // ---------------------------------------------------------------------
         if (this.heartsCaught < 5) {
-            return 'heart';
+            return {
+                heart: 100,
+                tomato: 0,
+                ramen: 0,
+                music: 0,
+                grammy: 0
+            };
         }
 
-        const roll = Phaser.Math.Between(1, 100);
-        const starUnlocked = this.starLevelShown;
+        // ---------------------------------------------------------------------
+        // 5–14 hearts
+        // Light danger phase.
+        // ---------------------------------------------------------------------
+        if (this.heartsCaught < 15) {
+            return {
+                heart: 78,
+                tomato: 22,
+                ramen: 0,
+                music: 0,
+                grammy: 0
+            };
+        }
 
-        if (!starUnlocked) {
-            if (roll <= 65) return 'heart';
+        // ---------------------------------------------------------------------
+        // 15–29 hearts (Star)
+        // ---------------------------------------------------------------------
+        if (this.heartsCaught < 30) {
+            return {
+                heart: 68,
+                tomato: 28,
+                ramen: 2,
+                music: 2,
+                grammy: 0
+            };
+        }
+
+        // ---------------------------------------------------------------------
+        // 30–59 hearts (Super Star)
+        // ---------------------------------------------------------------------
+        if (this.heartsCaught < 60) {
+            return {
+                heart: 57,
+                tomato: 37,
+                ramen: 3,
+                music: 3,
+                grammy: 0
+            };
+        }
+
+        // ---------------------------------------------------------------------
+        // 60–99 hearts (ICON)
+        // Tomatoes are 3% more common than hearts.
+        // heart 43 / tomato 46
+        // ---------------------------------------------------------------------
+        if (this.heartsCaught < 100) {
+            return {
+                heart: 43,
+                tomato: 46,
+                ramen: 5,
+                music: 4,
+                grammy: 2
+            };
+        }
+
+        // ---------------------------------------------------------------------
+        // 100–199 hearts (Legendary range)
+        // Hard, but controlled.
+        // ---------------------------------------------------------------------
+        if (this.heartsCaught < 200) {
+            return {
+                heart: 40,
+                tomato: 48,
+                ramen: 5,
+                music: 5,
+                grammy: 2
+            };
+        }
+
+        // ---------------------------------------------------------------------
+        // 200–299 hearts
+        // Slightly harsher, still readable.
+        // ---------------------------------------------------------------------
+        return {
+            heart: 38,
+            tomato: 50,
+            ramen: 5,
+            music: 5,
+            grammy: 2
+        };
+    }
+
+    chooseItemType() {
+        if (this.chaosModeActive) {
             return 'tomato';
         }
 
-        if (roll <= 65) return 'heart';
+        const weights = this.getSpawnWeights();
 
-        if (roll <= 68) {
-            if (this.ramenSpawnCount < this.maxRamenSpawns) {
-                this.ramenSpawnCount += 1;
-                return 'ramen';
-            }
+        // Grammy gated by unlock/caught/spawn state.
+        if (!this.grammyUnlocked || this.grammySpawned || this.grammyCaught) {
+            weights.grammy = 0;
+        }
+
+        // Ramen/music are capped globally.
+        if (this.ramenSpawnCount >= this.maxRamenSpawns) {
+            weights.ramen = 0;
+        }
+
+        if (this.musicSpawnCount >= this.maxMusicSpawns) {
+            weights.music = 0;
+        }
+
+        const total =
+            weights.heart +
+            weights.tomato +
+            weights.ramen +
+            weights.music +
+            weights.grammy;
+
+        if (total <= 0) {
             return 'heart';
         }
 
-        if (roll <= 71) {
-            if (this.musicSpawnCount < this.maxMusicSpawns) {
-                this.musicSpawnCount += 1;
-                return 'music';
-            }
+        let roll = Phaser.Math.Between(1, total);
+
+        if (roll <= weights.heart) {
             return 'heart';
         }
+        roll -= weights.heart;
 
-        return 'tomato';
+        if (roll <= weights.tomato) {
+            return 'tomato';
+        }
+        roll -= weights.tomato;
+
+        if (roll <= weights.ramen) {
+            this.ramenSpawnCount += 1;
+            return 'ramen';
+        }
+        roll -= weights.ramen;
+
+        if (roll <= weights.music) {
+            this.musicSpawnCount += 1;
+            return 'music';
+        }
+
+        return 'grammy';
     }
 
+    // =========================================================================
+    // ITEM HANDLING
+    // =========================================================================
     handleCaughtItem(item) {
+        if (this.isGameOver) return;
+
         const kind = item.itemKind;
         const value = item.itemValue;
         const x = item.x;
@@ -1341,11 +1778,15 @@ triggerGrammyEvent() {
         if (item.glowSprite && item.glowSprite.active) {
             item.glowSprite.destroy();
         }
+
         item.destroy();
 
         if (kind === 'good') {
             this.heartsCaught += value;
-            this.heartsNumberText.setText(String(this.heartsCaught));
+
+            if (this.heartsNumberText) {
+                this.heartsNumberText.setText(String(this.heartsCaught));
+            }
 
             if (itemType === 'ramen' || itemType === 'music') {
                 this.showPlayerReaction('bonus');
@@ -1354,7 +1795,8 @@ triggerGrammyEvent() {
 
             if (this.heartsCaught >= 5 && !this.firstTomatoTriggered) {
                 this.firstTomatoTriggered = true;
-                this.spawnWave(1);
+                // One early tomato introduction, but still fair.
+                this.spawnSpecificItem('tomato', [], this.getSafeLaneIndexes());
             }
 
             if (value === 2) {
@@ -1362,17 +1804,32 @@ triggerGrammyEvent() {
             } else {
                 this.showFloatingScore('+1');
             }
+
+            // Chaos trigger check immediately after scoring.
+            if (this.heartsCaught >= this.chaosThreshold && !this.chaosModeTriggered) {
+                this.startChaosMode();
+            }
+
             return;
         }
 
         if (kind === 'bonus') {
             this.heartsCaught += value;
-            this.heartsNumberText.setText(String(this.heartsCaught));
+
+            if (this.heartsNumberText) {
+                this.heartsNumberText.setText(String(this.heartsCaught));
+            }
+
             this.grammyCaught = true;
             this.showCenteredFloatingScore('Grammy Bonus +10');
             this.showGrammySparkles(x, y);
             this.showPlayerReaction('bonus');
             this.triggerVibration([80, 40, 120]);
+
+            if (this.heartsCaught >= this.chaosThreshold && !this.chaosModeTriggered) {
+                this.startChaosMode();
+            }
+
             return;
         }
 
@@ -1389,6 +1846,9 @@ triggerGrammyEvent() {
         }
     }
 
+    // =========================================================================
+    // PLAYER REACTIONS
+    // =========================================================================
     showPlayerReaction(type) {
         if (!this.ship || !this.ship.active || this.isGameOver) return;
 
@@ -1453,6 +1913,9 @@ triggerGrammyEvent() {
         });
     }
 
+    // =========================================================================
+    // GRAMMY SPARKLES
+    // =========================================================================
     showGrammySparkles(x, y) {
         for (let i = 0; i < 6; i++) {
             const sparkle = this.add.text(
@@ -1474,21 +1937,53 @@ triggerGrammyEvent() {
         }
     }
 
-    checkLevelProgress() {
+    // =========================================================================
+    // SPEED / LEVEL PROGRESSION
+    // =========================================================================
+    updateFallSpeedByHearts() {
         if (this.heartsCaught >= 200) {
-            this.currentFallSpeed = 11;
-        } else if (this.heartsCaught >= 100) {
-            this.currentFallSpeed = 10;
-        } else if (this.heartsCaught >= 60) {
+            this.currentFallSpeed = 9;
+            return;
+        }
+
+        if (this.heartsCaught >= 100) {
             this.currentFallSpeed = 8;
-        } else if (this.heartsCaught >= 50) {
+            return;
+        }
+
+        if (this.heartsCaught >= 60) {
+            this.currentFallSpeed = 7;
+            return;
+        }
+
+        if (this.heartsCaught >= 30) {
             this.currentFallSpeed = 6;
-        } else if (this.heartsCaught >= 30) {
+            return;
+        }
+
+        if (this.heartsCaught >= 20) {
+            this.currentFallSpeed = 5;
+            return;
+        }
+
+        if (this.heartsCaught >= 5) {
             this.currentFallSpeed = 4;
-        } else if (this.heartsCaught >= 20) {
-            this.currentFallSpeed = 3;
-        } else {
-            this.currentFallSpeed = 2;
+            return;
+        }
+
+        this.currentFallSpeed = 2;
+    }
+
+    checkLevelProgress() {
+        if (this.chaosModeTriggered) {
+            return;
+        }
+
+        this.updateFallSpeedByHearts();
+
+        if (this.heartsCaught >= this.chaosThreshold && !this.chaosModeTriggered) {
+            this.startChaosMode();
+            return;
         }
 
         if (this.heartsCaught >= 100 && !this.legendaryShown) {
@@ -1508,20 +2003,23 @@ triggerGrammyEvent() {
             this.iconLevelShown = true;
             this.currentLevelName = 'ICON Level';
             this.background.setTexture('backgroundgames2');
+
+            // Grammy now unlocks at ICON.
+            this.grammyUnlocked = true;
+            this.grammyForcedSpawnPending = true;
+
             this.showLevelMessage('ICON Level Reached');
+
+            if (this.gameStarted && !this.isGameOver && !this.grammySpawned && !this.grammyCaught) {
+                this.triggerGrammyEvent();
+            }
             return;
         }
 
         if (this.heartsCaught >= 30 && !this.superStarShown) {
             this.superStarShown = true;
             this.currentLevelName = 'Super Star Level';
-            this.grammyUnlocked = true;
-            this.grammyForcedSpawnPending = true;
             this.showLevelMessage('Super Star Level Reached');
-
-            if (this.gameStarted && !this.isGameOver && !this.grammySpawned && !this.grammyCaught) {
-                this.spawnWave(2);
-            }
             return;
         }
 
@@ -1533,6 +2031,106 @@ triggerGrammyEvent() {
         }
     }
 
+    // =========================================================================
+    // CHAOS MODE
+    // =========================================================================
+    startChaosMode() {
+        if (this.chaosModeTriggered || this.isGameOver) return;
+
+        this.chaosModeTriggered = true;
+        this.chaosModeActive = true;
+        this.chaosLevelShown = true;
+        this.currentLevelName = 'Chaos Level.. Oops';
+
+        if (this.spawnTimer) this.spawnTimer.paused = true;
+        if (this.extraSpawnTimer) this.extraSpawnTimer.paused = true;
+
+        // Clear hearts/bonus near the top so the chaos read is cleaner.
+        this.items.children.iterate((item) => {
+            if (!item || !item.active) return;
+
+            if (item.itemType !== 'tomato' && item.y < 240) {
+                if (item.glowSprite && item.glowSprite.active) {
+                    item.glowSprite.destroy();
+                }
+                item.destroy();
+            }
+        });
+
+        this.chaosText = this.add.text(180, 240, 'SOURCE\nCHAOS MODE\nACTIVATED', {
+            fontSize: '26px',
+            align: 'center',
+            color: '#ff6666',
+            stroke: '#4b0000',
+            strokeThickness: 5,
+            shadow: { offsetX: 0, offsetY: 0, color: '#ff3333', blur: 16, fill: true }
+        }).setOrigin(0.5).setDepth(999);
+
+        this.chaosBlinkTween = this.tweens.add({
+            targets: this.chaosText,
+            alpha: { from: 1, to: 0.2 },
+            duration: 160,
+            yoyo: true,
+            repeat: -1
+        });
+
+        // Flood tomatoes for a brief dramatic finish.
+        this.chaosFloodTimer = this.time.addEvent({
+            delay: 110,
+            callback: () => {
+                this.spawnChaosTomatoes();
+            },
+            callbackScope: this,
+            loop: true
+        });
+
+        this.chaosEndTimer = this.time.delayedCall(1900, () => {
+            if (this.chaosFloodTimer) {
+                this.chaosFloodTimer.remove(false);
+                this.chaosFloodTimer = null;
+            }
+
+            if (this.chaosBlinkTween) {
+                this.chaosBlinkTween.stop();
+                this.chaosBlinkTween = null;
+            }
+
+            if (this.chaosText && this.chaosText.active) {
+                this.chaosText.destroy();
+                this.chaosText = null;
+            }
+
+            this.endGame();
+        });
+    }
+
+    spawnChaosTomatoes() {
+        if (this.isGameOver) return;
+
+        const used = [];
+
+        for (let i = 0; i < 2; i++) {
+            const data = this.getSpawnX('tomato', used, []);
+            used.push(data.laneIndex);
+
+            const tomato = this.add.image(data.x, -34, 'tomato').setScale(0.23);
+            tomato.itemKind = 'bad';
+            tomato.itemValue = 1;
+            tomato.itemType = 'tomato';
+            tomato.speed = Math.max(this.currentFallSpeed + 2, 9);
+            tomato.catchWidth = 30;
+            tomato.catchHeight = 30;
+            tomato.angleSpeed = -0.25;
+            tomato.baseScale = 0.23;
+            tomato.safePassed = false;
+
+            this.items.add(tomato);
+        }
+    }
+
+    // =========================================================================
+    // FLOATING MESSAGES
+    // =========================================================================
     showLevelMessage(text) {
         const levelText = this.add.text(180, 245, text, {
             fontSize: '24px',
@@ -1614,12 +2212,18 @@ triggerGrammyEvent() {
         });
     }
 
+    // =========================================================================
+    // VIBRATION
+    // =========================================================================
     triggerVibration(pattern) {
         if (typeof navigator !== 'undefined' && navigator.vibrate) {
             navigator.vibrate(pattern);
         }
     }
 
+    // =========================================================================
+    // END GAME
+    // =========================================================================
     endGame() {
         if (this.isGameOver) return;
 
@@ -1629,8 +2233,25 @@ triggerGrammyEvent() {
         this.introGateActive = false;
         this.activeMusicMode = 'none';
 
-        if (this.spawnTimer) this.spawnTimer.remove(false);
-        if (this.extraSpawnTimer) this.extraSpawnTimer.remove(false);
+        if (this.spawnTimer) {
+            this.spawnTimer.remove(false);
+            this.spawnTimer = null;
+        }
+
+        if (this.extraSpawnTimer) {
+            this.extraSpawnTimer.remove(false);
+            this.extraSpawnTimer = null;
+        }
+
+        if (this.chaosFloodTimer) {
+            this.chaosFloodTimer.remove(false);
+            this.chaosFloodTimer = null;
+        }
+
+        if (this.chaosEndTimer) {
+            this.chaosEndTimer.remove(false);
+            this.chaosEndTimer = null;
+        }
 
         if (this.reactionTimer) {
             this.reactionTimer.remove(false);
@@ -1652,11 +2273,23 @@ triggerGrammyEvent() {
             this.introGatePulseTween = null;
         }
 
+        if (this.chaosBlinkTween) {
+            this.chaosBlinkTween.stop();
+            this.chaosBlinkTween = null;
+        }
+
+        if (this.chaosText && this.chaosText.active) {
+            this.chaosText.destroy();
+            this.chaosText = null;
+        }
+
         this.items.children.iterate((item) => {
             if (item && item.glowSprite && item.glowSprite.active) {
                 item.glowSprite.destroy();
             }
-            if (item) item.destroy();
+            if (item) {
+                item.destroy();
+            }
         });
 
         if (this.endGameButton) {
@@ -1800,7 +2433,14 @@ triggerGrammyEvent() {
         });
     }
 
+    // =========================================================================
+    // FINAL LEVEL TEXT
+    // =========================================================================
     getFinalLevelName() {
+        if (this.chaosLevelShown || this.chaosModeTriggered || this.heartsCaught >= this.chaosThreshold) {
+            return 'Chaos Level.. Oops';
+        }
+
         if (this.heartsCaught >= 100) return 'Legendary Level';
         if (this.heartsCaught >= 60) return 'ICON Level';
         if (this.heartsCaught >= 30) return 'Super Star Level';
