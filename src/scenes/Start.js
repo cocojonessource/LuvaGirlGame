@@ -112,7 +112,7 @@ export class Start extends Phaser.Scene {
         this.lastWaveSpawnAt = 0;
         this.lastRefillSpawnAt = 0;
 
-        this.starPowerThresholds = [100, 200];
+        this.starPowerThresholds = [100, 200, 350, 500];
         this.starPowerSpawnedAt = {};
         this.starPowerCaughtAt = {};
         this.starForcedSpawnPending = false;
@@ -1490,7 +1490,7 @@ export class Start extends Phaser.Scene {
             item.itemValue = 0;
             item.itemType = 'star';
             item.starThreshold = starThreshold;
-            item.speed = Math.max(3, this.currentFallSpeed - 1);
+            item.speed = 2
             item.catchWidth = 38;
             item.catchHeight = 38;
             item.angleSpeed = 2.8;
