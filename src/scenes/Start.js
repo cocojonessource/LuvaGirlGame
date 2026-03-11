@@ -9,8 +9,8 @@ export class Start extends Phaser.Scene {
         this.load.image('backgroundgames3', 'assets/BG3.png');
         this.load.image('backgroundgames4', 'assets/BG4.png');
 
-        this.load.image('openover', 'assets/Tomatoend1.png');
-        this.load.image('closeover', 'assets/Tomatoend2.png');
+        this.load.image('openover', 'assets/Tomatoend1.PNG');
+        this.load.image('closeover', 'assets/Tomatoend2.PNG');
 
         this.load.image('LuvaGirl', 'assets/LuvaGirl.png');
         this.load.image('Luvagirldrag', 'assets/Luvagirldrag.png');
