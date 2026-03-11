@@ -518,7 +518,7 @@ export class Start extends Phaser.Scene {
         }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
         this.addButtonFeedback(this.presaveButton, () => {
-            window.open('https://link.fans/luvagirl', '_blank');
+            window.location.href = 'https://link.fans/luvagirl'; '_blank');
         }, '#ffd6f2', '#c8a2ff');
 
         this.presaveArrow = this.add.text(52, 320, '▶', {
@@ -2856,7 +2856,7 @@ export class Start extends Phaser.Scene {
             shadow: { offsetX: 0, offsetY: 0, color: '#ff69b4', blur: 12, fill: true }
         }).setOrigin(0.5).setDepth(4001).setInteractive({ useHandCursor: true })
             .on('pointerdown', () => {
-                window.open('https://link.fans/luvagirl', '_blank');
+                window.location.href = 'https://link.fans/luvagirl';
             })
             .on('pointerover', function () {
                 this.setColor('#ff69b4');
