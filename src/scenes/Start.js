@@ -88,7 +88,7 @@ export class Start extends Phaser.Scene {
         this.grammyCaught = false;
         this.grammyEventStarted = false;
 
-        this.laysThresholds = [45, 250, 400, 650, 1200];
+        this.laysThresholds = [45, 250, 650, 1200];
         this.laysSpawnedAt = {};
         this.laysEventActive = false;
 
@@ -944,7 +944,7 @@ export class Start extends Phaser.Scene {
         if (now - this.lastWaveSpawnAt < neededDelay) return;
 
         this.lastWaveSpawnAt = now;
-        this.spawnWave(this.baseWaveSize);
+        this.spawnWave(this.baseWaveSize + (this.heartsCaught >= 350 ? 1 : 0) + (this.luvBombActive ? 3 : 0));
     }
 
     maybeRunRefillWave() {
@@ -963,7 +963,7 @@ export class Start extends Phaser.Scene {
         this.lastRefillSpawnAt = now;
 
         const deficit = targetActive - currentActive;
-        const refillCount = Phaser.Math.Clamp(deficit, 1, this.baseWaveSize + (this.luvBombActive ? 1 : 0));
+        const refillCount = Phaser.Math.Clamp(deficit, 1, this.baseWaveSize + (this.luvBombActive ? 6 : 2));
 
         this.spawnWave(refillCount);
     }
@@ -982,46 +982,49 @@ export class Start extends Phaser.Scene {
     getWaveDelayByHearts() {
         let delay;
 
-        if (this.heartsCaught < 5) delay = 1150;
-        else if (this.heartsCaught < 20) delay = 900;
+        if (this.heartsCaught < 5) delay = 1100;
+        else if (this.heartsCaught < 20) delay = 860;
         else if (this.heartsCaught < 60) delay = 700;
-        else if (this.heartsCaught < 100) delay = 620;
-        else if (this.heartsCaught < 200) delay = 560;
-        else delay = 520;
+        else if (this.heartsCaught < 100) delay = 590;
+        else if (this.heartsCaught < 200) delay = 520;
+        else if (this.heartsCaught < 350) delay = 470;
+        else delay = 470;
 
-        if (this.luvBombActive) delay -= 260;
+        if (this.luvBombActive) delay -= 280;
 
-        return Phaser.Math.Clamp(delay, 180, 1500);
+        return Phaser.Math.Clamp(delay, 110, 1500);
     }
 
     getRefillDelayByHearts() {
         let delay;
 
-        if (this.heartsCaught < 5) delay = 1400;
-        else if (this.heartsCaught < 20) delay = 1100;
-        else if (this.heartsCaught < 60) delay = 850;
-        else if (this.heartsCaught < 100) delay = 700;
-        else if (this.heartsCaught < 200) delay = 620;
-        else delay = 580;
+        if (this.heartsCaught < 5) delay = 1200;
+        else if (this.heartsCaught < 20) delay = 1000;
+        else if (this.heartsCaught < 60) delay = 780;
+        else if (this.heartsCaught < 100) delay = 650;
+        else if (this.heartsCaught < 200) delay = 560;
+        else if (this.heartsCaught < 350) delay = 500;
+        else delay = 500;
 
-        if (this.luvBombActive) delay -= 240;
+        if (this.luvBombActive) delay -= 300;
 
-        return Phaser.Math.Clamp(delay, 180, 1600);
+        return Phaser.Math.Clamp(delay, 100, 1600);
     }
 
     getTargetActiveItemsByHearts() {
         let total;
 
-        if (this.heartsCaught < 5) total = 1;
-        else if (this.heartsCaught < 20) total = 2;
-        else if (this.heartsCaught < 60) total = 3;
-        else if (this.heartsCaught < 100) total = 4;
-        else if (this.heartsCaught < 200) total = 4;
-        else total = 5;
+        if (this.heartsCaught < 5) total = 2;
+        else if (this.heartsCaught < 20) total = 3;
+        else if (this.heartsCaught < 60) total = 4;
+        else if (this.heartsCaught < 100) total = 5;
+        else if (this.heartsCaught < 200) total = 6;
+        else if (this.heartsCaught < 350) total = 7;
+        else total = 7;
 
-        if (this.luvBombActive) total += 4;
+        if (this.luvBombActive) total += 9;
 
-        return Phaser.Math.Clamp(total, 1, 10);
+        return Phaser.Math.Clamp(total, 1, 16);
     }
 
     pauseSpawnTimers() {
@@ -1572,7 +1575,7 @@ export class Start extends Phaser.Scene {
             item.itemKind = 'good';
             item.itemValue = this.luvBombActive ? 2 : 1;
             item.itemType = 'heart';
-            item.speed = this.luvBombActive ? this.currentFallSpeed + 1.5 : this.currentFallSpeed;
+            item.speed = this.luvBombActive ? this.currentFallSpeed + 2 : this.currentFallSpeed;
             item.catchWidth = 38;
             item.catchHeight = 34;
             item.angleSpeed = 0.12;
@@ -1810,7 +1813,7 @@ export class Start extends Phaser.Scene {
 
             this.pendingAnnouncements.push({
                 type: 'boost',
-                title: hadMissingLife ? 'Heart Healed!' : 'Love Boost!',
+                title: hadMissingLife ? 'Heart Healed!' : 'Luv Boost!',
                 subtext: hadMissingLife ? 'One Life Restored' : 'One Extra Life Gained'
             });
             this.playNextAnnouncement();
@@ -1852,7 +1855,7 @@ export class Start extends Phaser.Scene {
         this.startLuvBombRainbowEffect();
         this.queueLuvBombMessage();
 
-        this.time.delayedCall(180, () => {
+        this.time.delayedCall(120, () => {
             if (!this.isGameOver && this.luvBombActive) {
                 this.resumeSpawnTimers();
             }
@@ -2007,13 +2010,13 @@ export class Start extends Phaser.Scene {
         }
 
         this.luvBombMessageText = this.add.text(180, 220, 'LUV BOMB\nATTACK!!!', {
-            fontFamily: '"Arial Black", "Comic Sans MS", cursive',
             fontSize: '30px',
             fontStyle: 'bold',
-            color: '#ff7ecf',
+            color: '#ff8fd8',
             stroke: '#6d3bb8',
-            strokeThickness: 6,
-            shadow: { offsetX: 0, offsetY: 0, color: '#ffffff', blur: 3, fill: true }
+            strokeThickness: 8,
+            shadow: { offsetX: 0, offsetY: 0, color: '#ffffff', blur: 2, fill: true },
+            align: 'center'
         }).setOrigin(0.5).setDepth(2600).setScale(0.9);
 
         this.tweens.add({
@@ -2041,6 +2044,54 @@ export class Start extends Phaser.Scene {
 
                 this.luvBombMessageText = null;
                 this.luvBombMessageTween = null;
+                this.announcementActive = false;
+                this.playNextAnnouncement();
+            }
+        });
+    }
+
+    showTopLifeMessage(title, subtext) {
+        const titleText = this.add.text(180, 180, title, {
+            fontSize: '30px',
+            fontStyle: 'bold',
+            color: '#ff8fd8',
+            stroke: '#6d3bb8',
+            strokeThickness: 8,
+            shadow: { offsetX: 0, offsetY: 0, color: '#ffffff', blur: 2, fill: true }
+        }).setOrigin(0.5).setDepth(2600);
+
+        const subText = this.add.text(180, 210, subtext, {
+            fontSize: '14px',
+            align: 'center',
+            color: '#ffffff',
+            fontStyle: 'bold',
+            stroke: '#4b1e6d',
+            strokeThickness: 3
+        }).setOrigin(0.5).setDepth(2600);
+
+        this.activeLevelMessage = titleText;
+        this.activeLevelSubMessage = subText;
+        this.activeCenterMessage = titleText;
+
+        this.tweens.add({
+            targets: [titleText, subText],
+            alpha: 0,
+            delay: 3200,
+            duration: 700,
+            onComplete: () => {
+                if (this.activeCenterMessage === titleText) {
+                    this.activeCenterMessage = null;
+                }
+                if (this.activeLevelMessage === titleText) {
+                    this.activeLevelMessage = null;
+                }
+                if (this.activeLevelSubMessage === subText) {
+                    this.activeLevelSubMessage = null;
+                }
+
+                titleText.destroy();
+                subText.destroy();
+
                 this.announcementActive = false;
                 this.playNextAnnouncement();
             }
@@ -2082,62 +2133,13 @@ export class Start extends Phaser.Scene {
         }
     }
 
-    showTopLifeMessage(title, subtext) {
-        const titleText = this.add.text(180, 180, title, {
-            fontFamily: '"Arial Black", "Comic Sans MS", cursive',
-            fontSize: '24px',
-            fontStyle: 'bold',
-            color: '#ff8fd8',
-            stroke: '#6d3bb8',
-            strokeThickness: 8,
-            shadow: { offsetX: 0, offsetY: 0, color: '#ffffff', blur: 2, fill: true }
-        }).setOrigin(0.5).setDepth(2600);
-
-        const subText = this.add.text(180, 210, subtext, {
-            fontSize: '14px',
-            align: 'center',
-            color: '#ffffff',
-            fontStyle: 'bold'
-        }).setOrigin(0.5).setDepth(2600);
-
-        this.activeLevelMessage = titleText;
-        this.activeLevelSubMessage = subText;
-        this.activeCenterMessage = titleText;
-
-        this.tweens.add({
-            targets: [titleText, subText],
-            alpha: 0,
-            delay: 3200,
-            duration: 700,
-            onComplete: () => {
-                if (this.activeCenterMessage === titleText) {
-                    this.activeCenterMessage = null;
-                }
-                if (this.activeLevelMessage === titleText) {
-                    this.activeLevelMessage = null;
-                }
-                if (this.activeLevelSubMessage === subText) {
-                    this.activeLevelSubMessage = null;
-                }
-
-                titleText.destroy();
-                subText.destroy();
-
-                this.announcementActive = false;
-                this.playNextAnnouncement();
-            }
-        });
-    }
-
     showLevelMessage(text, shouldPulse = false, isFlowState = false) {
-        const levelText = this.add.text(180, 96, text, {
-            fontFamily: isFlowState ? '"Arial Black", "Comic Sans MS", cursive' : 'Arial',
-            fontSize: isFlowState ? '26px' : '23px',
-            fontStyle: 'bold',
+        const levelText = this.add.text(180, 200, text, {
+            fontSize: '23px',
             align: 'center',
             color: isFlowState ? '#ff8cf5' : '#ffff66',
             stroke: '#6d3bb8',
-            strokeThickness: isFlowState ? 12 : 10,
+            strokeThickness: 10,
             shadow: {
                 offsetX: 0,
                 offsetY: 0,
