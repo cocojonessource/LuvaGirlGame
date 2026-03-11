@@ -518,7 +518,7 @@ export class Start extends Phaser.Scene {
         }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
         this.addButtonFeedback(this.presaveButton, () => {
-            window.location.href = 'https://link.fans/luvagirl'; '_blank');
+            window.location.href = 'https://link.fans/luvagirl';
         }, '#ffd6f2', '#c8a2ff');
 
         this.presaveArrow = this.add.text(52, 320, '▶', {
