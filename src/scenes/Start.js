@@ -2539,12 +2539,12 @@ export class Start extends Phaser.Scene {
 
     updateFallSpeedByHearts() {
         if (this.chaosModeActive) {
-            this.currentFallSpeed = 10;
+            this.currentFallSpeed = 13;
             return;
         }
 
         if (this.heartsCaught >= 200) {
-            this.currentFallSpeed = 9;
+            this.currentFallSpeed = 10;
             return;
         }
 
@@ -2573,7 +2573,7 @@ export class Start extends Phaser.Scene {
             return;
         }
 
-        this.currentFallSpeed = 2;
+        this.currentFallSpeed = 3;
     }
 
     checkLevelProgress() {
