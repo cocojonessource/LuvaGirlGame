@@ -1338,7 +1338,7 @@ export class Start extends Phaser.Scene {
         }
     }
 
-    update() {
+    update(time, delta) {
         if (this.isGameOver) return;
 
         let movedThisFrame = false;
@@ -1372,7 +1372,7 @@ export class Start extends Phaser.Scene {
         this.items.children.iterate((item) => {
             if (!item || !item.active) return;
 
-            item.y += item.speed;
+            item.y += item.speed * (delta / 16.6667);
 
             if (item.angleSpeed) {
                 item.angle += item.angleSpeed;
